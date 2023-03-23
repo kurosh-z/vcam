@@ -1,0 +1,5 @@
+<library path="lib/libvcam_nodelet">
+  <class name="vcam/VCamNodelet"  type="vio_cam::VCamNodelet" base_class_type="nodelet::Nodelet">
+    <description>Driver wrapper nodelet for E-CON camera.</description>
+  </class>
+</library>

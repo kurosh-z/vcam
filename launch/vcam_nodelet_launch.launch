@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<!-- Example launch file for ECON Camera CU20 -->
+
+<launch>
+     <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" />
+
+   
+
+     <node pkg="nodelet" type="nodelet" name="vcam_nodelet"
+     args="load vcam/VCamNodelet nodelet_manager">
+ 
+     <param name="camera_name" type="str" value="slave1" /> <!-- == namespace for topics and services -->
+     <param name="camera_topic" type="str" value="image_raw" />
+     <param name="camera_id" type="int" value="11" /> <!-- 0 = any camera; 1+: camera ID -->
+
+     <param name="ext_trigger_mode" type="bool" value="true" /> <!-- if False, then camera will operate in free-run mode; otherwise, frames need to be triggered by hardware signal (falling-edge) on digital input pin of camera -->
+
+     <!-- the following are optional camera configuration parameters:
+          they will be loaded on the camera after the .ini configuration
+          file, and before dynamic_reconfigure. That means that any
+          (lingering) dynamic parameters from dynamic_reconfigure will
+          override these values, and that these will override parameters
+          from the .ini file.
+          See http://www.ros.org/wiki/ueye_cam for more details. -->
+
+     <param name="color_mode" type="str" value="mono8" /> <!-- valid options: 'mono16', 'mono8' -->
+
+     <!-- WARNING: the following 4 parameters specify dimensions for camera's area of interest. Values for image_width and image_height that are smaller than your camera's maximum values will result in cropped field of view. For typical cases, one should modify values for sensor_scaling / binning / subsampling to downsample the resulting ROS image to the desired dimensions, without losing potential field of view. -->
+     <param name="image_width" type="int" value="640" />
+     <param name="image_height" type="int" value="480" />
+     <param name="exposure" type="int" value="30" /> <!-- in ms -->
+
+     </node>
+</launch>

@@ -5,11 +5,14 @@
 #include <boost/thread/mutex.hpp>
 #include <cstdlib>
 #include <image_transport/image_transport.h>
+#include <mavros_msgs/CamIMUStamp.h>
 #include <nodelet/nodelet.h>
 #include <ros/ros.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/SetCameraInfo.h>
+#include <std_msgs/Int16.h>
+#include <std_srvs/Trigger.h>
 #include <thread>
 #include <vcam/device.h>
 #include <vcam/v4l2_cam_driver.h>
@@ -57,6 +60,10 @@ protected:
   unsigned long long int timeout_count_;
 
   ros::ServiceServer set_cam_info_srv_;
+  ros::ServiceClient trigger_ready_srv_;
+
+  ros::Subscriber ros_timestamp_sub_;
+
   std::string frame_name_;
   std::string cam_topic_;
   std::string timeout_topic_;
@@ -71,10 +78,15 @@ protected:
   uint64_t prev_output_frame_idx_; // see init_publish_time_
   boost::mutex output_rate_mutex_;
 
+  // msg buffers
+  std::vector<mavros_msgs::CamIMUStamp> timestamp_buffer_;
+
   bool setCamInfo(sensor_msgs::SetCameraInfo::Request &req,
                   sensor_msgs::SetCameraInfo::Response &rsp);
   void frameGrabLoop();
   void startFrameGrabber();
+  void setTriggerReady();
+  void bufferTimestamp(const mavros_msgs::CamIMUStamp &msg);
 };
 
 } // namespace vio_cam

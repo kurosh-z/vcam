@@ -27,12 +27,24 @@ void VCamNodelet::onInit() {
     ret = cam.open_device(dev_node_name.c_str());
     if (ret == 0) {
       cam.cam_init();
+      ros_timestamp_sub_ = nh.subscribe("/mavros/cam_imu_sync/cam_imu_stamp", 1,
+                                        &VCamNodelet::bufferTimestamp, this);
       ros_cam_pub_ = it.advertiseCamera(cam_name_ + "/" + cam_topic_, 1);
       set_cam_info_srv_ = nh.advertiseService(cam_name_ + "/set_camera_info",
                                               &VCamNodelet::setCamInfo, this);
+      trigger_ready_srv_ =
+          nh.serviceClient<std_srvs::Trigger>(cam_name_ + "/trigger_ready");
       startFrameGrabber();
+      setTriggerReady();
     }
   }
+};
+
+void VCamNodelet::setTriggerReady() {
+  std_srvs::Trigger sig;
+  if (!trigger_ready_srv_.call(sig)) {
+    ROS_ERROR("failed to cal ready_for_trigger");
+  };
 };
 
 bool VCamNodelet::setCamInfo(sensor_msgs::SetCameraInfo::Request &req,
@@ -49,6 +61,7 @@ void VCamNodelet::startFrameGrabber() {
   frame_grab_thread_ =
       std::thread(std::bind(&VCamNodelet::frameGrabLoop, this));
 }
+
 void VCamNodelet::frameGrabLoop() {
 #ifdef DEBUG_PRINTOUT_FRAME_GRAB_RATES
   ros::Time prevStartGrab = ros::Time::now();
@@ -84,6 +97,18 @@ void VCamNodelet::frameGrabLoop() {
     ros_cam_pub_.publish(ros_image_, ros_cam_info_);
   }
 }
+
+void VCamNodelet::bufferTimestamp(const mavros_msgs::CamIMUStamp &msg) {
+
+  timestamp_buffer_.push_back(msg);
+
+  // Check whether buffer has stale stamp and if so throw away oldest
+  if (timestamp_buffer_.size() > 100) {
+    timestamp_buffer_.erase(timestamp_buffer_.begin());
+    ROS_ERROR_THROTTLE(1, "Dropping timestamp");
+  }
+}
+
 } // namespace vio_cam
 
 PLUGINLIB_EXPORT_CLASS(vio_cam::VCamNodelet, nodelet::Nodelet)

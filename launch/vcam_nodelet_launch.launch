@@ -2,6 +2,9 @@
 <!-- Example launch file for ECON Camera CU20 -->
 
 <launch>
+     <!-- <include file="$(find mavros)/launch/px4.launch" />
+     <node pkg="vcam" type="trigger_commander" name="trigger_ready" output="screen" required="true" /> -->
+
      <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen" />
 
    

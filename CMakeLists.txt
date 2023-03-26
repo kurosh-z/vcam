@@ -208,7 +208,7 @@ add_dependencies(${VCAM_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 # )
 
 add_executable(trigger_commander
-  src/trigger_ready.cpp
+  src/TriggerSwitch.cpp
 )
 target_link_libraries(trigger_commander
   ${catkin_LIBRARIES}

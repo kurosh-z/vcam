@@ -1,16 +1,6 @@
 #ifndef V4L2_H
 #define V4L2_H
-#define PIX_FORMAT 1
-#define RESOLUTION 2
-#define FPS 3
-#define MAX_FRAME_SIZE_SUPPORT 16
-#define MAX_PIXELFORMAT_SUPPORT 16
-#define MAX_FRMINVAL_SUPPORT 10
-#define DISABLE 0
-#define ENABLE 1
-#define SUCCESS 0
-#define FAILURE -1
-#define DEV_UNPLUGGED -2
+
 #include <asm/types.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
@@ -23,6 +13,27 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <vector>
+
+#define PIX_FORMAT 1
+#define RESOLUTION 2
+#define FPS 3
+#define MAX_FRAME_SIZE_SUPPORT 16
+#define MAX_PIXELFORMAT_SUPPORT 16
+#define MAX_FRMINVAL_SUPPORT 10
+#define DISABLE 0
+#define ENABLE 1
+#define SUCCESS 0
+#define FAILURE -1
+#define DEV_UNPLUGGED -2
+
+#define CTRL_TYPE 7
+#define MENU_TYPE 8
+#define GET_CTRL 9
+#define GET_FORMAT 10
+#define V4L2_CID_CUSTOM_CONTROLS V4L2_CID_CAMERA_CLASS_BASE + 50
+#define V4L2_CID_ROI_WINDOW_SIZE V4L2_CID_CAMERA_CLASS_BASE + 36
+#define V4L2_CID_ROI_EXPOSURE V4L2_CID_CAMERA_CLASS_BASE + 38
+
 namespace vio_cam {
 class Camera {
 private:
@@ -54,11 +65,37 @@ private:
   std::vector<Buffer> buffers;
   std::string camera_name;
   std::string video_node;
+  struct v4l2_queryctrl queryctrl;
+  struct v4l2_querymenu querymenu;
 
   // private member functions
   void enqueue(int index);
   // public of class Camera
 public:
+  class CamResFormat {
+  public:
+    std::string pixelformat;
+    std::uint32_t widht;
+    std::uint32_t height;
+    std::vector<std::uint32_t> fps;
+  };
+
+  class CameraCtrl {
+  public:
+    std::uint32_t id;
+    std::uint32_t type;
+    std::string name;
+    std::int32_t minimum;
+    std::int32_t maximum;
+    std::int32_t step;
+    std::int32_t default_value;
+    std::int32_t cur_value;
+  };
+
+  std::vector<CameraCtrl> camera_contorl_list;
+  std::uint8_t exposure_ctrl_index = -1;
+  std::uint8_t brightness_ctrl_idx = -1;
+
   V4L2_structure v4l2; // obj of class Format
   // Member function of class Camera
   Camera();
@@ -69,11 +106,11 @@ public:
 
   void enum_pixelformat(std::vector<std::string> *list, std::string *str);
 
-  void enum_resolution(std::string pixelformat, std::vector<std::string> *list,
-                       std::string *str);
+  void enum_resolution(std::vector<CamResFormat> *list,
+                       CamResFormat *current_res_format);
 
   void enum_framerate(std::string pixelformat, int width, int height,
-                      std::vector<std::string> *list, std::string *str);
+                      std::vector<std::uint32_t> *list);
 
   int set_format(const std::string &fourcc, int input_width, int input_height);
 
@@ -113,6 +150,14 @@ public:
   std::string get_camera_name();
 
   void get_node_name(std::string *dev_node_name);
+
+  bool check_valid_control(int controlid);
+
+  bool request_format(std::string pixelformat, unsigned width, unsigned height,
+                      uint32_t fps, bool set_steam_on);
+
+  void qeury_controls();
+  bool set_exposure(uint32_t val);
 
 }; // end of class Camera
 

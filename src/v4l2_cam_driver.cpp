@@ -8,6 +8,8 @@ Camera::Camera() {
   streamon = false;
   cam_fd = -1;
   init = true;
+  memset(&queryctrl, 0, sizeof queryctrl);
+
   // subscribers_count = 0;
 }
 
@@ -45,6 +47,7 @@ int Camera::open_device(const std::string &device) {
     ROS_INFO("Device does not support streaming I/O");
     return FAILURE;
   }
+
   return SUCCESS;
 }
 
@@ -78,6 +81,7 @@ void Camera::cam_init() {
   denominator = v4l2.cam_parm.parm.capture.timeperframe.denominator;
   request_buffer();
   stream_on();
+  qeury_controls();
   init = true;
 }
 
@@ -103,23 +107,26 @@ void Camera::enum_pixelformat(std::vector<std::string> *list,
   }
 }
 
-void Camera::enum_resolution(std::string pixelformat,
-                             std::vector<std::string> *list, std::string *str) {
-  std::stringstream temp_stream;
+void Camera::enum_resolution(std::vector<CamResFormat> *list,
+                             CamResFormat *current_res_format) {
+
   for (int cnt = 0; cnt < MAX_FRAME_SIZE_SUPPORT; cnt++) {
 
     memset(&v4l2.fsize[cnt], 0, sizeof(v4l2.fsize[cnt]));
 
-    temp_stream.str(""); // clearing temp_stream
     v4l2.fsize[cnt].index = cnt;
     v4l2.fsize[cnt].pixel_format = v4l2_fourcc(pixelformat[0], pixelformat[1],
                                                pixelformat[2], pixelformat[3]);
 
     if (0 == xioctl(VIDIOC_ENUM_FRAMESIZES, &v4l2.fsize[cnt])) {
-      temp_stream << v4l2.fsize[cnt].discrete.width;
-      temp_stream << "x";
-      temp_stream << v4l2.fsize[cnt].discrete.height;
-      list->push_back(temp_stream.str());
+      CamResFormat temp_resformat;
+      temp_resformat.pixelformat = pixelformat;
+      temp_resformat.widht = v4l2.fsize[cnt].discrete.width;
+      temp_resformat.height = v4l2.fsize[cnt].discrete.height;
+
+      enum_framerate(temp_resformat.pixelformat, temp_resformat.widht,
+                     temp_resformat.height, &temp_resformat.fps);
+      list->push_back(temp_resformat);
 
     } else {
       break;
@@ -130,22 +137,20 @@ void Camera::enum_resolution(std::string pixelformat,
   v4l2.stream_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   v4l2.stream_fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
   if (0 == xioctl(VIDIOC_G_FMT, &v4l2.stream_fmt)) {
-    temp_stream.str(""); // clearing temp_stream
-    temp_stream << v4l2.stream_fmt.fmt.pix.width;
-    temp_stream << "x";
-    temp_stream << v4l2.stream_fmt.fmt.pix.height;
-    *str = temp_stream.str();
+
+    current_res_format->widht = v4l2.stream_fmt.fmt.pix.width;
+    current_res_format->height = v4l2.stream_fmt.fmt.pix.height;
+    current_res_format->pixelformat = pixelformat;
+
   } else {
-    ROS_ERROR("failed");
+    ROS_ERROR("ERROR getting the current resolution ");
   }
 }
 
 void Camera::enum_framerate(std::string pixelformat, int width, int height,
-                            std::vector<std::string> *list, std::string *str) {
+                            std::vector<std::uint32_t> *list) {
 
-  std::stringstream temp_stream;
   for (int cnt = 0; cnt < MAX_FRMINVAL_SUPPORT; cnt++) {
-    temp_stream.str(""); // clearing temp_stream
     memset(&v4l2.frminterval, 0, sizeof(v4l2.frminterval));
     v4l2.frminterval.index = cnt;
     v4l2.frminterval.width = width;
@@ -166,10 +171,9 @@ void Camera::enum_framerate(std::string pixelformat, int width, int height,
                 (2) den-15, num -2
                 15/2 = 7.5 FPS
       */
-      temp_stream << (double)v4l2.desc_frm_inval[cnt].denominator /
-                         v4l2.desc_frm_inval[cnt].numerator;
-      temp_stream << " FPS";
-      list->push_back(temp_stream.str());
+
+      list->push_back((double)v4l2.desc_frm_inval[cnt].denominator /
+                      v4l2.desc_frm_inval[cnt].numerator);
     } else {
       break;
     }
@@ -399,6 +403,8 @@ int Camera::capture(sensor_msgs::Image *image) {
     image->width = v4l2.stream_fmt.fmt.pix.width;
     image->height = v4l2.stream_fmt.fmt.pix.height;
     // image->length = v4l2.buffer.bytesused;
+
+    // TODO: seperate raw image from other types
     if (v4l2.stream_fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_MJPEG) {
 
       image->encoding = "mjpg";
@@ -712,6 +718,109 @@ void Camera::get_four_character_code(int32_t pix_fmt,
     *pixelformat = "BA81";
   default:
     break;
+  }
+}
+
+/*****************************************************************************
+ *  Name	:	check_valid_control
+ *  Parameter1 : int controlid - control id
+ *  Returns	:
+ *  			True	- If the control name  is a valid.
+ *       False - If the control name  is a invalid.
+ *  Description	: This function is to check whether the control name is valid.
+ *****************************************************************************/
+bool Camera::check_valid_control(int controlid) {
+  if (controlid == V4L2_CID_USER_CLASS || controlid == V4L2_CID_CAMERA_CLASS ||
+      controlid == V4L2_CID_ROI_EXPOSURE ||
+      controlid == V4L2_CID_ROI_WINDOW_SIZE ||
+      controlid >= V4L2_CID_CUSTOM_CONTROLS) {
+    return false;
+  }
+  return true;
+}
+
+bool Camera::request_format(std::string pixelformat, unsigned width,
+                            unsigned height, uint32_t fps, bool set_steam_on) {
+  stream_off();
+  clean_buffer();
+  int ret = set_format(pixelformat, width, height);
+  if (ret != 0) {
+    return false;
+  }
+  set_framerate(fps, 1);
+  ret = request_buffer();
+  if (set_steam_on && ret == 0) {
+    return stream_on() == 0;
+  }
+  return ret == 0;
+}
+
+void Camera::qeury_controls() {
+  memset(&queryctrl, 0, sizeof queryctrl);
+  camera_contorl_list.clear();
+
+  queryctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+  while (xioctl(VIDIOC_QUERYCTRL, &queryctrl) == 0) {
+
+    if (!(check_valid_control(queryctrl.id))) {
+      queryctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+      continue;
+    }
+
+    CameraCtrl temp_ctrl;
+    temp_ctrl.id = queryctrl.id;
+    temp_ctrl.type = queryctrl.type;
+    temp_ctrl.name = std::string((char *)queryctrl.name);
+    temp_ctrl.default_value = queryctrl.default_value;
+    if (queryctrl.type == V4L2_CTRL_TYPE_INTEGER) {
+      temp_ctrl.minimum = queryctrl.minimum;
+      temp_ctrl.maximum = queryctrl.maximum;
+      temp_ctrl.step = queryctrl.step;
+    }
+    std::transform(temp_ctrl.name.begin(), temp_ctrl.name.end(),
+                   temp_ctrl.name.begin(), ::toupper);
+    camera_contorl_list.push_back(temp_ctrl);
+    if (temp_ctrl.name.find("EXPOSURE") != std::string::npos) {
+      exposure_ctrl_index = camera_contorl_list.size() - 1;
+    } else if (temp_ctrl.name.find("BRIGHTNESS") != std::string::npos) {
+      exposure_ctrl_index = camera_contorl_list.size() - 1;
+    }
+
+    // getting the current value:
+    struct v4l2_control ctrl;
+    memset(&ctrl, 0, sizeof(ctrl));
+    ctrl.id = queryctrl.id;
+
+    if (xioctl(VIDIOC_G_CTRL, &ctrl)) {
+      temp_ctrl.cur_value = ctrl.value;
+    }
+
+    else {
+      ROS_ERROR("Getting current value for %s control is failed",
+                (char *)queryctrl.name);
+    }
+
+    // trying next id
+    queryctrl.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+  }
+  ROS_INFO_STREAM("size of camera controls: " << camera_contorl_list.size());
+}
+
+bool Camera::set_exposure(uint32_t val) {
+  if (exposure_ctrl_index == -1) {
+    ROS_ERROR("camera exposure contorl could not be found!");
+    return false;
+  }
+  struct v4l2_control ctrl;
+  ctrl.id = camera_contorl_list.at(exposure_ctrl_index).id;
+
+  if (0 == xioctl(VIDIOC_S_CTRL, &ctrl)) {
+    return true;
+  }
+
+  else {
+    ROS_ERROR("error setting camera exposure contorl!");
+    return false;
   }
 }
 

@@ -32,19 +32,43 @@ void VCamNodelet::onInit() {
       ros_cam_pub_ = it.advertiseCamera(cam_name_ + "/" + cam_topic_, 1);
       set_cam_info_srv_ = nh.advertiseService(cam_name_ + "/set_camera_info",
                                               &VCamNodelet::setCamInfo, this);
-      trigger_ready_srv_ =
-          nh.serviceClient<std_srvs::Trigger>(cam_name_ + "/trigger_ready");
-      startFrameGrabber();
-      setTriggerReady();
+
+      std::vector<Camera::CamResFormat> res_list;
+      Camera::CamResFormat current_res;
+      cam.enum_resolution(&res_list, &current_res);
+      ROS_INFO("supproted resolutions:");
+      for (auto res_format : res_list) {
+        std::cout << "pixelformat: " << res_format.pixelformat
+                  << " res: " << res_format.widht << "*" << res_format.height
+                  << "max fps:"
+                  // << 20
+                  << *std::max_element(res_format.fps.begin(),
+                                       res_format.fps.end())
+                  << std::endl;
+      }
+      ROS_INFO("current resolution:");
+      std::cout << current_res.pixelformat << current_res.widht << "*"
+                << current_res.height << std::endl;
+      cam_trigger_srv_ =
+          nh.serviceClient<std_srvs::SetBool>(cam_name_ + "/trigger_switch");
+
+      // startFrameGrabber();
+      // bool trigSuccess = switchCameraTrigger(true);
+      // if (!trigSuccess) {
+      //   ROS_ERROR("could not switch camera trigger");
+      // }
     }
   }
 };
 
-void VCamNodelet::setTriggerReady() {
-  std_srvs::Trigger sig;
-  if (!trigger_ready_srv_.call(sig)) {
+bool VCamNodelet::switchCameraTrigger(bool state) {
+  std_srvs::SetBool sig;
+  sig.request.data = state;
+  if (!cam_trigger_srv_.call(sig)) {
     ROS_ERROR("failed to cal ready_for_trigger");
+    return false;
   };
+  return true;
 };
 
 bool VCamNodelet::setCamInfo(sensor_msgs::SetCameraInfo::Request &req,
@@ -103,7 +127,7 @@ void VCamNodelet::bufferTimestamp(const mavros_msgs::CamIMUStamp &msg) {
   timestamp_buffer_.push_back(msg);
 
   // Check whether buffer has stale stamp and if so throw away oldest
-  if (timestamp_buffer_.size() > 100) {
+  if (timestamp_buffer_.size() > 1000) {
     timestamp_buffer_.erase(timestamp_buffer_.begin());
     ROS_ERROR_THROTTLE(1, "Dropping timestamp");
   }

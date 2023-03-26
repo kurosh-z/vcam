@@ -1,7 +1,9 @@
 
 #ifndef V_CAM_NODELET_HPP_
 #define V_CAM_NODELET_HPP_
+#include "mavros_msgs/CommandTriggerControl.h"
 #include "vcam/logging_macros.hpp"
+#include <algorithm>
 #include <boost/thread/mutex.hpp>
 #include <cstdlib>
 #include <image_transport/image_transport.h>
@@ -12,7 +14,7 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/SetCameraInfo.h>
 #include <std_msgs/Int16.h>
-#include <std_srvs/Trigger.h>
+#include <std_srvs/SetBool.h>
 #include <thread>
 #include <vcam/device.h>
 #include <vcam/v4l2_cam_driver.h>
@@ -60,8 +62,7 @@ protected:
   unsigned long long int timeout_count_;
 
   ros::ServiceServer set_cam_info_srv_;
-  ros::ServiceClient trigger_ready_srv_;
-
+  ros::ServiceClient cam_trigger_srv_;
   ros::Subscriber ros_timestamp_sub_;
 
   std::string frame_name_;
@@ -85,7 +86,7 @@ protected:
                   sensor_msgs::SetCameraInfo::Response &rsp);
   void frameGrabLoop();
   void startFrameGrabber();
-  void setTriggerReady();
+  bool switchCameraTrigger(bool state);
   void bufferTimestamp(const mavros_msgs::CamIMUStamp &msg);
 };
 

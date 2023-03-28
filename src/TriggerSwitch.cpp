@@ -42,6 +42,18 @@ public:
                                      &TriggerSwitch::servCameraTriggerCB, this);
   }
 
+  void disbale_trigger() {
+    if (triggerClient_.call(mavros_tr_ctl_srv_)) {
+      mavros_tr_ctl_srv_.request.trigger_enable = false;
+      ROS_INFO("Successfully disabled camera trigger");
+
+      return;
+    }
+    ROS_ERROR("Failed to call trigger_control service");
+
+    return;
+  }
+
 private:
   ros::NodeHandle nodeHandle_;
 
@@ -56,5 +68,7 @@ int main(int argc, char **argv) {
 
   ros::init(argc, argv, "TriggerSwitch");
   TriggerSwitch tr;
+  ros::service::waitForService("/mavros/cmd/trigger_control");
+  tr.disbale_trigger();
   ros::spin();
 }

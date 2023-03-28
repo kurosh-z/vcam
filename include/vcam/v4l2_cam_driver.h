@@ -153,8 +153,8 @@ public:
 
   bool check_valid_control(int controlid);
 
-  bool request_format(std::string pixelformat, unsigned width, unsigned height,
-                      uint32_t fps, bool set_steam_on);
+  bool request_format(const std::string &fourcc, unsigned width,
+                      unsigned height, uint32_t fps, bool set_steam_on);
 
   void qeury_controls();
   bool set_exposure(uint32_t val);

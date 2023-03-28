@@ -51,6 +51,7 @@ protected:
   std::string cam_name_;
   std::string video_node;
   std::string dev_node_name = "/dev/";
+  bool trigger_enabled = false;
 
   std::thread frame_grab_thread_;
   bool frame_grab_alive_;
@@ -81,6 +82,10 @@ protected:
 
   // msg buffers
   std::vector<mavros_msgs::CamIMUStamp> timestamp_buffer_;
+  long double zero_timestamp_frame_id = 0;
+  bool zero_frame_id_set = false;
+  std::vector<sensor_msgs::Image> image_buffer_;
+  std::vector<sensor_msgs::CameraInfo> cinfo_buffer_;
 
   bool setCamInfo(sensor_msgs::SetCameraInfo::Request &req,
                   sensor_msgs::SetCameraInfo::Response &rsp);
@@ -88,6 +93,8 @@ protected:
   void startFrameGrabber();
   bool switchCameraTrigger(bool state);
   void bufferTimestamp(const mavros_msgs::CamIMUStamp &msg);
+  int findInStampBuffer(unsigned int index);
+  int stampAndPublishImage(unsigned int index);
 };
 
 } // namespace vio_cam

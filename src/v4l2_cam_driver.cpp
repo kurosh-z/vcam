@@ -208,7 +208,7 @@ int Camera::set_format(const std::string &fourcc, int input_width,
     ROS_INFO("VIDIOC_S_FMT failed");
     return FAILURE;
   }
-  pixelformat = fourcc;
+  get_four_character_code(v4l2.stream_fmt.fmt.pix.pixelformat, &pixelformat);
   height = input_height;
   width = input_width;
   return SUCCESS;
@@ -421,6 +421,7 @@ int Camera::capture(sensor_msgs::Image *image) {
         enqueue(v4l2.buffer.index);
         return FAILURE;
       }
+      image->header.stamp = ros::Time(0);
       image->encoding = sensor_msgs::image_encodings::MONO8;
       image->width = v4l2.stream_fmt.fmt.pix.width;
       image->height = v4l2.stream_fmt.fmt.pix.height;
@@ -443,6 +444,7 @@ int Camera::capture(sensor_msgs::Image *image) {
         enqueue(v4l2.buffer.index);
         return FAILURE;
       }
+      // TODO: BUG:here you should copy data according to step
       image->encoding = sensor_msgs::image_encodings::MONO16;
       image->width = v4l2.stream_fmt.fmt.pix.width;
       image->height = v4l2.stream_fmt.fmt.pix.height;
@@ -739,15 +741,15 @@ bool Camera::check_valid_control(int controlid) {
   return true;
 }
 
-bool Camera::request_format(std::string pixelformat, unsigned width,
+bool Camera::request_format(const std::string &encoding, unsigned width,
                             unsigned height, uint32_t fps, bool set_steam_on) {
   stream_off();
   clean_buffer();
-  int ret = set_format(pixelformat, width, height);
+  int ret = set_format(encoding, width, height);
   if (ret != 0) {
     return false;
   }
-  set_framerate(fps, 1);
+  set_framerate(1, fps);
   ret = request_buffer();
   if (set_steam_on && ret == 0) {
     return stream_on() == 0;
@@ -789,10 +791,12 @@ void Camera::qeury_controls() {
     // getting the current value:
     struct v4l2_control ctrl;
     memset(&ctrl, 0, sizeof(ctrl));
-    ctrl.id = queryctrl.id;
+    ctrl.id = temp_ctrl.id;
 
-    if (xioctl(VIDIOC_G_CTRL, &ctrl)) {
+    if (xioctl(VIDIOC_G_CTRL, &ctrl) == 0) {
       temp_ctrl.cur_value = ctrl.value;
+      ROS_INFO_STREAM("current value of " << temp_ctrl.name << ": "
+                                          << temp_ctrl.cur_value);
     }
 
     else {

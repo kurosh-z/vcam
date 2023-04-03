@@ -32,6 +32,7 @@ public:
   constexpr static int DEFAULT_IMAGE_HEIGHT =
       480; // are overwritten by queryCamParams() during connectCam()
   constexpr static double DEFAULT_EXPOSURE = 30.0;
+  constexpr static float IDEAL_INTERVAL = 1000.0 / 30.0; // 1000 ms / 30 fps 
   constexpr static double DEFAULT_FRAME_RATE = 10.0;
   constexpr static int DEFAULT_PIXEL_CLOCK = 25;
 
@@ -67,7 +68,7 @@ protected:
   ros::Subscriber ros_timestamp_sub_;
 
   std::string frame_name_;
-  std::string cam_topic_;
+  std::string cam_topic_ = "image_raw";
   std::string timeout_topic_;
   std::string cam_intr_filename_;
   std::string cam_params_filename_; // should be valid UEye INI file
@@ -84,8 +85,13 @@ protected:
   std::vector<mavros_msgs::CamIMUStamp> timestamp_buffer_;
   long double zero_timestamp_frame_id = 0;
   bool zero_frame_id_set = false;
+  bool skippFrame = true;
+
   std::vector<sensor_msgs::Image> image_buffer_;
   std::vector<sensor_msgs::CameraInfo> cinfo_buffer_;
+
+  ros::Time currentTriggerTime = ros::Time::now();
+  ros::Time prevTriggerTime = ros::Time::now();
 
   bool setCamInfo(sensor_msgs::SetCameraInfo::Request &req,
                   sensor_msgs::SetCameraInfo::Response &rsp);

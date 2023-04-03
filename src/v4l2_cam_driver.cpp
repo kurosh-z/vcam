@@ -421,7 +421,7 @@ int Camera::capture(sensor_msgs::Image *image) {
         enqueue(v4l2.buffer.index);
         return FAILURE;
       }
-      image->header.stamp = ros::Time(0);
+      image->header.stamp = ros::Time::now();
       image->encoding = sensor_msgs::image_encodings::MONO8;
       image->width = v4l2.stream_fmt.fmt.pix.width;
       image->height = v4l2.stream_fmt.fmt.pix.height;
@@ -436,7 +436,7 @@ int Camera::capture(sensor_msgs::Image *image) {
       image->data.resize(image->height * image->step);
       memcpy(&image->data[0], buffers[v4l2.buffer.index].start,
              v4l2.stream_fmt.fmt.pix.width * v4l2.stream_fmt.fmt.pix.height);
-      ROS_INFO("image captured mono8");
+      // ROS_INFO("image captured mono8");
 
     } else if (v4l2.stream_fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_Y16) {
       if (v4l2.buffer.bytesused !=
@@ -749,7 +749,7 @@ bool Camera::request_format(const std::string &encoding, unsigned width,
   if (ret != 0) {
     return false;
   }
-  set_framerate(1, fps);
+  // set_framerate(1, fps);
   ret = request_buffer();
   if (set_steam_on && ret == 0) {
     return stream_on() == 0;
@@ -819,6 +819,7 @@ bool Camera::set_exposure(uint32_t val) {
   ctrl.id = camera_contorl_list.at(exposure_ctrl_index).id;
 
   if (0 == xioctl(VIDIOC_S_CTRL, &ctrl)) {
+    ROS_INFO_STREAM("[v4l2_cam_driver.cpp] exposure set to: " << val);
     return true;
   }
 

@@ -237,7 +237,7 @@ int getstream_mode(int hid_fd)
 
 int main(int argc,char *argv[])
 {
-	int i = 0, choice = 0, option = 0, stream_mode = 1, stream_val = 0;
+	int i = 0, choice = 0, option = 0, stream_mode = 0, stream_val = 0;
 
 	if(initExtensionUnit("hidraw") < 0 || econdev_count == 0){
 		printf("Device not found \n");
@@ -250,40 +250,45 @@ int main(int argc,char *argv[])
 		
 		printf("%s \n", dev_name);
 		printf("HIDRAW device node = %d \n", dev_node[i]);
-		int ret =setstream_mode(stream_mode,dev_node[i]);
-		if(ret == SUCCESS)
-			printf("Set stream mode success \n");
-		else
-			printf("Set stream mode failed \n");
 		
-		// while (choice != 1) {
-		// 	printf("Enter the vaule to camera stream mode (1 = Set Camera Stream Mode, 2 = Get Camera Stream Mode):");
-		// 	scanf("%d", &option);
-		// 	switch (option) {
-		// 		case 1:
-		// 			printf("Enter the vaule to set camera stream mode (0 = MASTER_MODE, 1 = TRIGGER_MODE):");
-		// 			scanf("%d", &stream_mode);
-		// 			if (stream_mode < 0 || stream_mode > 1) 
-		// 			{
-		// 				printf("Wrong option. \t Enter correct option. \n");
-		// 			} 
-		// 			else 
-		// 			{
-		// 				setstream_mode(stream_mode,dev_node[i]);
-		// 				choice = 1;
-		// 			}
+		
+		while (choice != 1) {
+			printf("Enter the vaule to camera stream mode (1 = Set Camera Stream Mode, 2 = Get Camera Stream Mode):");
+			scanf("%d", &option);
+			switch (option) {
+				case 1:
+					printf("Enter the vaule to set camera stream mode (0 = MASTER_MODE, 1 = TRIGGER_MODE):");
+					scanf("%d", &stream_mode);
+					if (stream_mode < 0 || stream_mode > 1) 
+					{
+						printf("Wrong option. \t Enter correct option. \n");
+					} 
+					else 
+					{
+						int ret=setstream_mode(stream_mode,dev_node[i]);
+						choice = 1;
+                        if(ret == 0)
+                        {
+                            printf("Camera Stream Mode set successfully \n");
+                        }
+                        else
+                        {
+                            printf("Failed to set Camera Stream Mode \n");
+                        }
+                        
+					}
 				
-		// 		case 2:
-		// 			printf("Camera Stream Mode = %d \n", getstream_mode(dev_node[i]));
-		// 			choice = 1;
-		// 			break;
+				case 2:
+					printf("Camera Stream Mode = %d \n", getstream_mode(dev_node[i]));
+					choice = 1;
+					break;
 					
-		// 		default:
-		// 			printf("Wrong option. \t Enter correct option. \n");
-		// 			break;
-		// 	}
+				default:
+					printf("Wrong option. \t Enter correct option. \n");
+					break;
+			}
 			
-		// }
+		}
 
 		close_hid(dev_node[i]);
 		

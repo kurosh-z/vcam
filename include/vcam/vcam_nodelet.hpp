@@ -1,13 +1,15 @@
 
 #ifndef V_CAM_NODELET_HPP_
 #define V_CAM_NODELET_HPP_
-#include "mavros_msgs/CommandTriggerControl.h"
+// #include "mavros_msgs/CommandTriggerControl.h"
 #include "vcam/logging_macros.hpp"
 #include <algorithm>
 #include <boost/thread/mutex.hpp>
 #include <cstdlib>
 #include <image_transport/image_transport.h>
-#include <mavros_msgs/CamIMUStamp.h>
+#include <imu_cam_msgs/ICtrigger.h>
+#include <imu_cam_msgs/cmd_imu.h>
+#include <imu_cam_msgs/cmd_imuRequest.h>
 #include <nodelet/nodelet.h>
 #include <ros/ros.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -16,12 +18,15 @@
 #include <std_msgs/Int16.h>
 #include <std_srvs/SetBool.h>
 #include <thread>
+
 #include <vcam/device.h>
 #include <vcam/v4l2_cam_driver.h>
 
 #define DEBUG_PRINTOUT_FRAME_GRAB_RATES
 
 namespace vio_cam {
+#define DEFAULT_EXPOSURE_MS 12
+
 class VCamNodelet : public nodelet::Nodelet {
 public:
   constexpr static unsigned int RECONFIGURE_RUNNING = 0;
@@ -31,9 +36,9 @@ public:
       640; // NOTE: these default values do not matter, as they
   constexpr static int DEFAULT_IMAGE_HEIGHT =
       480; // are overwritten by queryCamParams() during connectCam()
-  constexpr static double DEFAULT_EXPOSURE = 30.0;
-  constexpr static float IDEAL_INTERVAL = 1000.0 / 30.0; // 1000 ms / 30 fps 
-  constexpr static double DEFAULT_FRAME_RATE = 10.0;
+
+  constexpr static float IDEAL_INTERVAL = 1000.0 / 25.0; // 1000 ms / 25 fps
+  constexpr static double DEFAULT_FRAME_RATE = 25.0;
   constexpr static int DEFAULT_PIXEL_CLOCK = 25;
 
   const static std::string DEFAULT_FRAME_NAME;
@@ -53,6 +58,7 @@ protected:
   std::string video_node;
   std::string dev_node_name = "/dev/";
   bool trigger_enabled = false;
+  int exposure_ms = DEFAULT_EXPOSURE_MS;
 
   std::thread frame_grab_thread_;
   bool frame_grab_alive_;
@@ -64,7 +70,7 @@ protected:
   unsigned long long int timeout_count_;
 
   ros::ServiceServer set_cam_info_srv_;
-  ros::ServiceClient cam_trigger_srv_;
+  ros::ServiceClient cam_cmd_srv_;
   ros::Subscriber ros_timestamp_sub_;
 
   std::string frame_name_;
@@ -82,13 +88,14 @@ protected:
   boost::mutex output_rate_mutex_;
 
   // msg buffers
-  std::vector<mavros_msgs::CamIMUStamp> timestamp_buffer_;
+  std::vector<imu_cam_msgs::ICtrigger> timestamp_buffer_;
   long double zero_timestamp_frame_id = 0;
   bool zero_frame_id_set = false;
   bool skippFrame = true;
 
   std::vector<sensor_msgs::Image> image_buffer_;
   std::vector<sensor_msgs::CameraInfo> cinfo_buffer_;
+  std::vector<double> dt_buff;
 
   ros::Time currentTriggerTime = ros::Time::now();
   ros::Time prevTriggerTime = ros::Time::now();
@@ -98,8 +105,10 @@ protected:
   void frameGrabLoop();
   void startFrameGrabber();
   bool switchCameraTrigger(bool state);
-  void bufferTimestamp(const mavros_msgs::CamIMUStamp &msg);
+  bool setTriggerExposure(uint8_t exposure_ms);
+  void bufferTimestamp(const imu_cam_msgs::ICtrigger &msg);
   int findInStampBuffer(unsigned int index);
+  int findInStampBufferWithTime(unsigned int index);
   int stampAndPublishImage(unsigned int index);
 };
 

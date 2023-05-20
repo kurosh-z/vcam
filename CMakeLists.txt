@@ -19,12 +19,12 @@ cv_bridge
 image_transport
 image_geometry
 sensor_msgs
-mavros_msgs
 std_srvs
 std_msgs
 camera_calibration_parsers
 camera_info_manager
 message_generation
+imu_cam_msgs
 )
 catkin_destinations()
 add_definitions(-std=c++11 -Wall -g)
@@ -161,7 +161,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
  INCLUDE_DIRS include
  LIBRARIES ${VCAM_LIB_NAME} ${VCAM_NODELET_NAME} vcam
- CATKIN_DEPENDS roscpp nodelet dynamic_reconfigure cv_bridge image_transport image_geometry sensor_msgs camera_calibration_parsers camera_info_manager mavros_msgs std_srvs std_msgs message_runtime
+ CATKIN_DEPENDS roscpp nodelet dynamic_reconfigure cv_bridge image_transport image_geometry sensor_msgs  camera_calibration_parsers camera_info_manager  std_srvs std_msgs message_runtime imu_cam_msgs
  DEPENDS OpenCV
 )
 
@@ -186,13 +186,19 @@ target_link_libraries(${VCAM_LIB_NAME} ${V4L_LIBRARIES} ${UDEV_LIBRARIES} ${catk
 
 
 
-add_library(${VCAM_NODELET_NAME} ${VCAM_NODELET_SOURCES} ${VCAM_NODELET_HEADERS})
+# add_library(${VCAM_NODELET_NAME} ${VCAM_NODELET_SOURCES} ${VCAM_NODELET_HEADERS})
+
+add_library(${PROJECT_NAME} ${VCAM_NODELET_SOURCES} ${VCAM_NODELET_HEADERS})
+
+target_link_libraries(${PROJECT_NAME}  ${VCAM_LIB_NAME} ${Boost_INCLUDE_DIRS} ${CMAKE_THREAD_LIBS_INIT} ${OpenCV_LIBRARIES} ${libudev_LIBRARIES} ${catkin_LIBRARIES} )
+add_dependencies(${PROJECT_NAME}  ${PROJECT_NAME}_gencfg  ${catkin_EXPORTED_TARGETS})
+
+# target_link_libraries(${VCAM_NODELET_NAME} ${VCAM_LIB_NAME} ${Boost_INCLUDE_DIRS} ${CMAKE_THREAD_LIBS_INIT} ${OpenCV_LIBRARIES} ${libudev_LIBRARIES} ${catkin_LIBRARIES} )
+# add_dependencies(${VCAM_NODELET_NAME} ${PROJECT_NAME}_gencfg  ${catkin_EXPORTED_TARGETS})
 
 
-
-target_link_libraries(${VCAM_NODELET_NAME} ${VCAM_LIB_NAME} ${Boost_INCLUDE_DIRS} ${CMAKE_THREAD_LIBS_INIT} ${OpenCV_LIBRARIES} ${libudev_LIBRARIES} ${catkin_LIBRARIES} )
-add_dependencies(${VCAM_NODELET_NAME} ${PROJECT_NAME}_gencfg)
-
+add_executable(${PROJECT_NAME}_node src/${PROJECT_NAME}_node.cpp)
+target_link_libraries(${PROJECT_NAME}_node ${catkin_LIBRARIES})
 
 # target_link_libraries(${PROJECT_NAME}_nodelet
 #   vcam
@@ -202,17 +208,18 @@ add_dependencies(${VCAM_NODELET_NAME} ${PROJECT_NAME}_gencfg)
 # )
 
 
+
 # add_library(${PROJECT_NAME}
 #   src/device.cpp
 #   src/cam_driver.cpp
 # )
 
-add_executable(trigger_commander
-  src/TriggerSwitch.cpp
-)
-target_link_libraries(trigger_commander
-  ${catkin_LIBRARIES}
-)
+# add_executable(trigger_commander
+#   src/TriggerSwitch.cpp
+# )
+# target_link_libraries(trigger_commander
+#   ${catkin_LIBRARIES}
+# )
 
 
 #################################################
@@ -242,7 +249,7 @@ target_link_libraries(trigger_commander
 
 
 
-install(TARGETS ${VCAM_LIB_NAME} ${VCAM_NODELET_NAME} 
+install(TARGETS  ${PROJECT_NAME} ${VCAM_LIB_NAME}  ${PROJECT_NAME}_node
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

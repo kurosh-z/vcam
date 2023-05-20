@@ -575,7 +575,7 @@ int Camera::clean_buffer() {
  *  Description	:   This function will unmaap the allocated buffer.
  *****************************************************************************/
 void Camera::munmap_buffers() {
-  int index;
+  __u32 index;
   if (buffers.size() != 0) {
     for (index = 0; index < v4l2.reqbuf.count; index++) {
       if (buffers[index].start != NULL) {
@@ -817,6 +817,7 @@ bool Camera::set_exposure(uint32_t val) {
   }
   struct v4l2_control ctrl;
   ctrl.id = camera_contorl_list.at(exposure_ctrl_index).id;
+  ctrl.value = val;
 
   if (0 == xioctl(VIDIOC_S_CTRL, &ctrl)) {
     ROS_INFO_STREAM("[v4l2_cam_driver.cpp] exposure set to: " << val);

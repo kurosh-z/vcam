@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!-- Example launch file for ECON Camera CU20 -->
+
+<launch>
+  
+
+     <node pkg="vcam" type="vcam_node" name="vcam_node" output="screen" >
+     
+          <param name="camera_topic" type="str" value="image_raw" />
+          <param name="color_mode" type="str" value="mono8" /> 
+            <param name="image_width" type="int" value="640" />
+        <param name="image_height" type="int" value="480" />
+         <param name="exposure_ms" type="int" value="35" />
+          <param name="ext_trigger_mode" type="bool" value="true" />
+     </node>
+
+
+   
+</launch>

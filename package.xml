@@ -57,17 +57,20 @@
   <build_depend>image_transport</build_depend>
   <build_depend>image_geometry</build_depend>
   <build_depend>sensor_msgs</build_depend>
-  <build_depend>mavros_msgs</build_depend>
+  <!-- <build_depend>mavros_msgs</build_depend> -->
   <build_depend>std_msgs</build_depend>
   <build_depend>std_srvs</build_depend>
   <build_depend>message_generation</build_depend>
   <build_depend>message_runtime</build_depend>
   <build_depend>camera_calibration_parsers</build_depend>
   <build_depend>camera_info_manager</build_depend>
-  <build_depend>mavros</build_depend>
-  <build_depend>mavros_extras</build_depend>
+  <!-- <build_depend>mavros</build_depend>
+  <build_depend>mavros_extras</build_depend> -->
   <build_depend>tf</build_depend>
+  <build_depend>imu_cam_msgs</build_depend>
    <build_depend>pluginlib</build_depend>
+   
+   <build_depend>imu_cam_msgs</build_depend>
 
   <exec_depend>roscpp</exec_depend>
    <exec_depend>rospy</exec_depend>
@@ -77,15 +80,16 @@
   <exec_depend>image_transport</exec_depend>
   <exec_depend>image_geometry</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>mavros_msgs</exec_depend>
+  <!-- <exec_depend>mavros_msgs</exec_depend> -->
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>camera_calibration_parsers</exec_depend>
   <exec_depend>camera_info_manager</exec_depend>
   <exec_depend>message_runtime</exec_depend>
   <exec_depend>pluginlib</exec_depend>
-  <exec_depend>mavros_extras</exec_depend>
-  <exec_depend>mavros</exec_depend>
+  <!-- <exec_depend>mavros_extras</exec_depend> -->
+  <!-- <exec_depend>mavros</exec_depend> -->
+  <exec_depend>imu_cam_msgs</exec_depend>
   <exec_depend>tf</exec_depend>
 
   <!-- The export tag contains other, unspecified, tags -->

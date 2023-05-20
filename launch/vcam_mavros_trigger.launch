@@ -1,7 +1,0 @@
-<?xml version="1.0"?>
-<!-- Example launch file for ECON Camera CU20 -->
-
-<launch>
-     <!-- <include file="$(find mavros)/launch/px4.launch" /> -->
-     <node pkg="vcam" type="trigger_commander" name="TriggerSwitch" output="screen" required="true" />
-</launch>

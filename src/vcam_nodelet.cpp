@@ -18,6 +18,16 @@ void VCamNodelet::onInit() {
 
   ros::NodeHandle &nh = getNodeHandle();
   ros::NodeHandle &local_nh = getPrivateNodeHandle();
+
+  local_nh.param<int>("exposure_ms", exposure_ms, DEFAULT_EXPOSURE_MS);
+  // epxosure_ms could be max 1000[ms]/ 25[fps] = 40[ms] otherwise the fps
+  // should be reduced
+  if (exposure_ms < 1 || exposure_ms > 35) {
+    ROS_WARN_STREAM("exposure_ms is out of range, setting to default value: "
+                    << DEFAULT_EXPOSURE_MS);
+    exposure_ms = DEFAULT_EXPOSURE_MS;
+  }
+
   auto rate = ros::Rate(1);
 
   image_transport::ImageTransport it(nh);
@@ -33,8 +43,10 @@ void VCamNodelet::onInit() {
     ret = cam.open_device(dev_node_name.c_str());
     if (ret == 0) {
       cam.cam_init();
-      ros_timestamp_sub_ = nh.subscribe("/mavros/cam_imu_sync/cam_imu_stamp", 1,
+      cam.set_exposure(exposure_ms * 10); // driver takes 10x ms as input value
+      ros_timestamp_sub_ = nh.subscribe("imu_cam_sync/cam_trigger_stamp", 4,
                                         &VCamNodelet::bufferTimestamp, this);
+
       ros_cam_pub_ = it.advertiseCamera(cam_name_ + "/" + cam_topic_, 1);
       set_cam_info_srv_ = nh.advertiseService(cam_name_ + "/set_camera_info",
                                               &VCamNodelet::setCamInfo, this);
@@ -44,6 +56,7 @@ void VCamNodelet::onInit() {
       // cam.set_exposure(30);
       rate.sleep();
       cam.enum_resolution(&res_list, &current_res);
+
       ROS_INFO("supproted resolutions:");
       for (auto res_format : res_list) {
         std::cout << "pixelformat: " << res_format.pixelformat
@@ -57,8 +70,8 @@ void VCamNodelet::onInit() {
       ROS_INFO("current resolution:");
       std::cout << current_res.pixelformat << current_res.widht << "*"
                 << current_res.height << std::endl;
-      cam_trigger_srv_ =
-          nh.serviceClient<std_srvs::SetBool>(cam_name_ + "/trigger_switch");
+      cam_cmd_srv_ =
+          nh.serviceClient<imu_cam_msgs::cmd_imu>("imu_cam_sync/cmd");
 
       // cam.request_format("GREY", 640, 480, 30, true);
 
@@ -70,16 +83,53 @@ void VCamNodelet::onInit() {
   }
 };
 
+bool VCamNodelet::setTriggerExposure(uint8_t exposure_ms) {
+
+  imu_cam_msgs::cmd_imu sig;
+  sig.request.cmd_type = "CMD_SET_EXPOSURE";
+  sig.request.cmd_val = exposure_ms;
+
+  for (int i = 0; i < 8; i++) {
+    if (!cam_cmd_srv_.call(sig)) {
+      ROS_ERROR("failed to set exposure!");
+    };
+    if (sig.response.error) {
+      ROS_WARN_STREAM("failed to set exposure! error code: "
+                      << sig.response.response_type.c_str()
+                      << (i == 0 ? "\n trying again ..." : ""));
+    } else {
+      ROS_INFO_STREAM(
+          "set trigger response: " << sig.response.response_type.c_str());
+      return true;
+    }
+  }
+  return false;
+
+}; // namespace vio_cam
+
 bool VCamNodelet::switchCameraTrigger(bool state) {
 
-  std_srvs::SetBool sig;
-  sig.request.data = state;
-  if (!cam_trigger_srv_.call(sig)) {
-    ROS_ERROR("failed to cal ready_for_trigger");
-    return false;
-  };
-  return true;
-};
+  imu_cam_msgs::cmd_imu sig;
+  sig.request.cmd_type = "CMD_SET_TRIGGER";
+  sig.request.cmd_val = state ? 1 : 0;
+
+  for (int i = 0; i < 8; i++) {
+    if (!cam_cmd_srv_.call(sig)) {
+      ROS_ERROR("failed to cal ready_for_trigger!");
+    };
+    if (sig.response.error) {
+      ROS_WARN_STREAM("failed to set trigger! error code: "
+                      << sig.response.response_type.c_str()
+                      << (i == 0 ? "\n trying again ..." : ""));
+    } else {
+      ROS_INFO_STREAM(
+          "set trigger response: " << sig.response.response_type.c_str());
+      return true;
+    }
+  }
+  return false;
+
+}; // namespace vio_cam
 
 bool VCamNodelet::setCamInfo(sensor_msgs::SetCameraInfo::Request &req,
                              sensor_msgs::SetCameraInfo::Response &rsp) {
@@ -92,11 +142,38 @@ bool VCamNodelet::setCamInfo(sensor_msgs::SetCameraInfo::Request &req,
 
 void VCamNodelet::startFrameGrabber() {
   ROS_INFO("\n=================== Start Frame Grabber =====================\n");
-  ros::service::waitForService(cam_name_ + "/trigger_switch");
-  switchCameraTrigger(true);
+  ros::service::waitForService("imu_cam_sync/cmd");
+  auto exposure_set = setTriggerExposure(exposure_ms);
+  if (!exposure_set) {
+    ROS_FATAL("failed to set exposure for trigger signal!");
+    return;
+  }
+
+  auto trigger_set = switchCameraTrigger(false);
+  if (!trigger_set) {
+    ROS_FATAL("failed to set trigger");
+    return;
+    auto trigger_set = switchCameraTrigger(false);
+    if (!trigger_set) {
+      ROS_FATAL("failed to set trigger 0");
+      return;
+    }
+  }
+  // remove any message which may have been published before
+  ros::Time::sleepUntil(ros::Time::now() + ros::Duration(1.5));
+  timestamp_buffer_.clear();
+
+  trigger_set = switchCameraTrigger(true);
+  if (!trigger_set) {
+    ROS_FATAL("failed to set trigger 1");
+    return;
+  }
+  ros::topic::waitForMessage<imu_cam_msgs::ICtrigger>(
+      "imu_cam_sync/cam_trigger_stamp");
   frame_grab_alive_ = true;
   frame_grab_thread_ =
       std::thread(std::bind(&VCamNodelet::frameGrabLoop, this));
+  ros::spinOnce();
 }
 
 void VCamNodelet::frameGrabLoop() {
@@ -117,6 +194,7 @@ void VCamNodelet::frameGrabLoop() {
 
     bool capture_succeeded = cam.capture(&ros_image_) == 0;
     if (capture_succeeded) {
+      // std::cout << "----------------------------------------\n";
 
       // DEBUG_STREAM("(Re-)allocated ROS image buffer for ["
       //              << cam_name_ << "]:"
@@ -135,24 +213,53 @@ void VCamNodelet::frameGrabLoop() {
 
       image_buffer_.push_back(ros_image_);
       cinfo_buffer_.push_back(ros_cam_info_);
-      ROS_INFO_STREAM("[frameGrabLoop] image seq: " << ros_image_.header.seq);
+      // ROS_INFO_STREAM("[frameGrabLoop] image seq: " <<
+      // ros_image_.header.seq);
 
-      if (skippFrame && timestamp_buffer_.size() > 2 && ros_frame_count_ > 2) {
+      if (timestamp_buffer_.size() > 2 && ros_frame_count_ > 2) {
         int iLast = image_buffer_.size() - 1;
         int tLast = timestamp_buffer_.size() - 1;
         float frame_interval =
             1000 * (image_buffer_.at(iLast).header.stamp.toSec() -
                     image_buffer_.at(iLast - 1).header.stamp.toSec());
+        // ROS_INFO_STREAM("frame interval: " << std::fixed <<
+        // std::setprecision(2)
+        //                                    << frame_interval);
 
-        if (frame_interval > (IDEAL_INTERVAL - 5) && frame_interval < (IDEAL_INTERVAL + 5)) {
+        if (frame_interval > (IDEAL_INTERVAL - 5) &&
+            frame_interval < (IDEAL_INTERVAL + 5)) {
           timestamp_buffer_.erase(timestamp_buffer_.begin(),
                                   timestamp_buffer_.begin() + tLast);
-          zero_timestamp_frame_id = timestamp_buffer_.at(0).frame_seq_id - 1;
-          skippFrame = false;
-          ros_frame_count_ = 1;
-          image_buffer_.erase(image_buffer_.begin(),
-                              image_buffer_.begin() + iLast);
-          ROS_INFO_STREAM("synchronized ");
+
+          std::pair<int, double> min_diff = std::make_pair(-1, 1e6);
+          for (uint i = 0; i < timestamp_buffer_.size(); i++) {
+            auto dt = (image_buffer_.at(iLast).header.stamp -
+                       timestamp_buffer_.at(i).Header.stamp)
+                          .toSec() *
+                      1e3; //[ms]
+            if (dt - (double)exposure_ms / 2. > 0 && dt < min_diff.second) {
+              min_diff.first = i;
+              min_diff.second = dt;
+            }
+          }
+          zero_timestamp_frame_id = timestamp_buffer_.at(0).Header.seq - 1;
+
+          if (min_diff.first != -1) {
+            std::cout << "min_diff: " << min_diff.second << " min_id: "
+                      << timestamp_buffer_.at(min_diff.first).Header.seq
+                      << " cal_id: " << zero_timestamp_frame_id << std::endl;
+          }
+
+          if (skippFrame) {
+            ros_frame_count_ = 1;
+            image_buffer_.erase(image_buffer_.begin(),
+                                image_buffer_.begin() + iLast);
+            ROS_INFO_STREAM("synchronized ");
+            skippFrame = false;
+          }
+
+        } else {
+          skippFrame = true;
         }
       }
       // if (skippFrame && ros_frame_count_ > 3) {
@@ -214,10 +321,10 @@ void VCamNodelet::frameGrabLoop() {
 #ifdef DEBUG_PRINTOUT_FRAME_GRAB_RATES
       prevFrameTime = curretnFrameTime;
       curretnFrameTime = ros::Time::now();
-      ROS_INFO_STREAM("frame interval:"
-                      << std::fixed << std::setprecision(5)
-                      << curretnFrameTime.toSec() - prevFrameTime.toSec()
-                      << std ::endl);
+      // ROS_INFO_STREAM("frame interval:" << std::fixed << std::setprecision(2)
+      //                                   << 10e3 * (curretnFrameTime.toSec() -
+      //                                              prevFrameTime.toSec())
+      //                                   << std ::endl);
 
 #endif
 
@@ -255,7 +362,7 @@ void VCamNodelet::frameGrabLoop() {
   }
 }
 
-void VCamNodelet::bufferTimestamp(const mavros_msgs::CamIMUStamp &msg) {
+void VCamNodelet::bufferTimestamp(const imu_cam_msgs::ICtrigger &msg) {
   // if (!zero_frame_id_set) {
   //   ROS_INFO_STREAM("first camIMUStamp: " << msg.frame_seq_id);
   //   zero_timestamp_frame_id = msg.frame_seq_id - 1;
@@ -263,30 +370,19 @@ void VCamNodelet::bufferTimestamp(const mavros_msgs::CamIMUStamp &msg) {
   // }
 
   timestamp_buffer_.push_back(msg);
-  ROS_INFO_STREAM("[bufferTimestamp]: trig seq: "
-                  << msg.frame_seq_id - zero_timestamp_frame_id);
+  // ROS_INFO_STREAM("[bufferTimestamp]: trig_msg seq: "
+  //                 << msg.Header.seq - zero_timestamp_frame_id);
 #ifdef DEBUG_PRINTOUT_FRAME_GRAB_RATES
   prevTriggerTime = currentTriggerTime;
-  currentTriggerTime = ros::Time::now();
-  ROS_INFO_STREAM("trigger interval:"
-                  << std::fixed << std::setprecision(4)
-                  << currentTriggerTime.toSec() - prevTriggerTime.toSec()
-                  << std::endl);
+  // currentTriggerTime = ros::Time::now();
+  currentTriggerTime = msg.Header.stamp;
+  // ROS_INFO_STREAM("trigger interval [ms]:"
+  //                 << std::fixed << std::setprecision(2)
+  //                 << (currentTriggerTime.toSec() - prevTriggerTime.toSec()) *
+  //                        1e3
+  //                 << std::endl);
 
 #endif
-  // uint len = timestamp_buffer_.size();
-  // if (len > 1) {
-
-  //   ROS_INFO_STREAM(" tr seq: "
-  //                   << msg.frame_seq_id << " time diff: "
-  //                   << msg.frame_stamp.toSec() -
-  //                          timestamp_buffer_.at(len -
-  //                          2).frame_stamp.toSec());
-  // }
-  // if (timestamp_buffer_.size() < 100) {
-  //   ROS_INFO_STREAM("timestamp frame_seq_id: " << msg.frame_seq_id);
-  //   timestamp_buffer_.push_back(msg);
-  // }
 
   // Check whether buffer has stale stamp and if so throw away oldest
   if (timestamp_buffer_.size() > 100) {
@@ -302,8 +398,10 @@ int VCamNodelet::findInStampBuffer(unsigned int index) {
   // check which timestamp corresponds to the same frame sequence
   unsigned int k = 0;
   while (k < timestamp_buffer_.size() && ros::ok()) {
+    // TODO: check time instead of seq ? the timestamP is in the middle of the
+    // exposure time
     if (image_buffer_.at(index).header.seq + zero_timestamp_frame_id ==
-        (uint)timestamp_buffer_.at(k).frame_seq_id) {
+        (uint)timestamp_buffer_.at(k).Header.seq) {
       return k;
     } else {
       k += 1;
@@ -311,36 +409,59 @@ int VCamNodelet::findInStampBuffer(unsigned int index) {
   }
   return -1;
 }
+int VCamNodelet::findInStampBufferWithTime(unsigned int index) {
+  if (image_buffer_.size() < 1) {
+    return 0;
+  }
+  std::pair<int, double> min_diff = std::make_pair(0, 1e6);
+  for (uint i = 0; i < timestamp_buffer_.size(); i++) {
+    auto dt = (image_buffer_.at(index).header.stamp -
+               timestamp_buffer_.at(i).Header.stamp)
+                  .toSec() *
+              1e3; //[ms]
+    if (dt - (double)exposure_ms / 2. > 0 && dt < min_diff.second) {
+      min_diff.first = i;
+      min_diff.second = dt;
+    }
+  }
+  std::cout << "dt: " << min_diff.second << std::endl;
+
+  return min_diff.second < 30. ? min_diff.first : -1;
+}
+
 int VCamNodelet::stampAndPublishImage(unsigned int index) {
-  int timestamp_index = findInStampBuffer(index);
-  if (timestamp_index != -1) {
+  int timestamp_index_with_seq = findInStampBuffer(index);
+  int timestamp_index_with_time = findInStampBufferWithTime(index);
+  std::cout << "timestamp_index: " << timestamp_index_with_seq
+            << " timestamp_index_with_time: " << timestamp_index_with_time
+            << std::endl;
+
+  if (timestamp_index_with_time != -1) {
+
+    if (timestamp_index_with_seq != -1)
+      std::cout << "diff_seq: "
+                << (image_buffer_.at(index).header.stamp -
+                    timestamp_buffer_.at(timestamp_index_with_seq).Header.stamp)
+                           .toSec() *
+                       10e3
+                << std::endl;
+
     sensor_msgs::Image image = image_buffer_.at(index);
     sensor_msgs::CameraInfo cinfo = cinfo_buffer_.at(index);
 
-    // std::cout << "im_[s]: " << image.header.stamp.toSec() << " imu[s] "
-    //           << image_buffer_.at(timestamp_index).header.stamp.toSec()
-    //           << std::endl;
-
-    double timestamp =1.6 / 2  +
-        timestamp_buffer_.at(timestamp_index).frame_stamp.toSec();
-
-    // ROS_INFO_STREAM(std::fixed // fix the number of decimal digits
-    //                 << std::setprecision(18) << "image stamp sec -> "
-    //                 << image.header.stamp.toSec());
-
-    image.header.stamp = ros::Time(timestamp);
+    // timestamp_buff gives the exact time of the trigger signal +
+    // exposure_time/2
+    //  this also corresponds to the correct imu reading's timestamp
+    image.header.stamp =
+        timestamp_buffer_.at(timestamp_index_with_time).Header.stamp;
     // image.header.stamp = ros::Time::now();
     cinfo.header = image.header;
     ros_cam_pub_.publish(image, cinfo);
 
-    // ROS_INFO_STREAM(std::fixed // fix the number of decimal digits
-    //                 << std::setprecision(18) << std::setw(30)
-    //                 << "[stampAndPublishImage] published image_seq -> "
-    //                 << image.header.seq
-    //                 << " time: " << image.header.stamp.toSec());
     image_buffer_.erase(image_buffer_.begin() + index);
     cinfo_buffer_.erase(cinfo_buffer_.begin() + index);
-    timestamp_buffer_.erase(timestamp_buffer_.begin() + timestamp_index);
+    timestamp_buffer_.erase(timestamp_buffer_.begin() +
+                            timestamp_index_with_time);
     return 0;
   }
   return 1;
